@@ -10,8 +10,20 @@ Usage:
 import argparse
 import ftplib
 import io
+import logging
+import os
 import xml.etree.ElementTree as ET
 
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+LOG_FILE = os.path.join(SCRIPT_DIR, "convert_saldo.log")
+
+logging.basicConfig(
+    filename=LOG_FILE,
+    level=logging.INFO,
+    format="%(asctime)s  %(levelname)s  %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
+log = logging.getLogger(__name__)
 
 FTP_HOST = "edi.sr-transport.no"
 FTP_PORT = 21
@@ -51,32 +63,30 @@ def main():
                         help=f"Remote filename to download (default: {DEFAULT_FILENAME})")
     args = parser.parse_args()
 
-    print(f"Connecting to {FTP_HOST}...")
-    ftp = ftplib.FTP()
-    ftp.connect(FTP_HOST, FTP_PORT)
-    ftp.login(FTP_USER, FTP_PASS)
-    print("Connected.")
+    try:
+        log.info("Connecting to %s...", FTP_HOST)
+        ftp = ftplib.FTP()
+        ftp.connect(FTP_HOST, FTP_PORT)
+        ftp.login(FTP_USER, FTP_PASS)
+        log.info("Connected.")
 
-    ftp.cwd("ISANORGE")
+        ftp.cwd("ISANORGE")
 
-    print("Files on server (ISANORGE/):")
-    files = ftp.nlst()
-    for f_name in files:
-        print(f"  {f_name}")
+        log.info("Downloading %s...", args.filename)
+        xml_bytes = download_from_ftp(ftp, args.filename)
+        log.info("Downloaded %d bytes.", len(xml_bytes))
 
-    print(f"Downloading {args.filename}...")
-    xml_bytes = download_from_ftp(ftp, args.filename)
-    print(f"Downloaded {len(xml_bytes)} bytes.")
+        tsv_text = convert_xml_to_tsv(xml_bytes)
+        row_count = tsv_text.count("\n")
+        log.info("Converted %d rows.", row_count)
 
-    tsv_text = convert_xml_to_tsv(xml_bytes)
-    row_count = tsv_text.count("\n")
-    print(f"Converted {row_count} rows.")
+        log.info("Uploading %s...", OUTPUT_FILENAME)
+        upload_to_ftp(ftp, OUTPUT_FILENAME, tsv_text.encode("utf-8"))
+        log.info("Done — %d rows uploaded.", row_count)
 
-    print(f"Uploading {OUTPUT_FILENAME}...")
-    upload_to_ftp(ftp, OUTPUT_FILENAME, tsv_text.encode("utf-8"))
-    print("Done.")
-
-    ftp.quit()
+        ftp.quit()
+    except Exception:
+        log.exception("Run failed")
 
 
 if __name__ == "__main__":
