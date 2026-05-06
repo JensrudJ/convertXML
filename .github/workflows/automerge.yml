@@ -1,0 +1,58 @@
+name: Auto-merge to master
+
+on:
+  push:
+    branches:
+      - 'claude/**'
+      - 'feature/**'
+      - 'feat/**'
+      - 'fix/**'
+      - 'refactor/**'
+      - 'perf/**'
+      - 'test/**'
+      - 'chore/**'
+      - 'docs/**'
+      - 'doc/**'
+
+permissions:
+  contents: write
+
+jobs:
+  merge-to-master:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.ref_name }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Validate head branch
+        env:
+          HEAD_BRANCH: ${{ github.ref_name }}
+        run: |
+          case "$HEAD_BRANCH" in
+            claude/*|feature/*|feat/*|fix/*|refactor/*|perf/*|test/*|chore/*|docs/*|doc/*)
+              echo "Head branch '$HEAD_BRANCH' passes allowlist."
+              ;;
+            *)
+              echo "Refusing to auto-merge branch '$HEAD_BRANCH' - not in allowlist."
+              exit 1
+              ;;
+          esac
+
+      - name: Merge to master
+        env:
+          HEAD_BRANCH: ${{ github.ref_name }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git fetch origin master
+          git checkout master
+          git merge "origin/$HEAD_BRANCH" --no-ff -m "Auto-merge $HEAD_BRANCH into master"
+          git push origin master
+
+      - name: Delete branch
+        env:
+          HEAD_BRANCH: ${{ github.ref_name }}
+        run: git push origin --delete "$HEAD_BRANCH"
